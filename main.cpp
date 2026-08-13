@@ -1,49 +1,35 @@
-#include <cmath>
-#include <cstdlib>
-#include <ctime>
+﻿#include <cstdlib>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include "tgaimage.h"
+#include <vector>
 
-constexpr TGAColor white   = {255, 255, 255, 255}; // attention, BGRA order
-constexpr TGAColor green   = {  0, 255,   0, 255};
+constexpr TGAColor white   = {255, 255, 255, 255};
 constexpr TGAColor red     = {  0,   0, 255, 255};
-constexpr TGAColor blue    = {255, 128,  64, 255};
-constexpr TGAColor yellow  = {  0, 200, 255, 255};
 
 void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
 {
-    //判断x和y上哪个需要更高的采样率
     bool steep = std::abs(ax - bx) < std::abs(ay - by);
     if (steep)
     {
         std::swap(ax, ay);
         std::swap(bx, by);
     }
-    //交换两个点再绘制
     if ( ax > bx )
     {
         std::swap(ax, bx);
         std::swap(ay, by);
     }
-    //自适配采样率，同样可能需要应用于y
     int y = ay;
     int ierror = 0;
-    /*int y = ay;
-    float error = 0;*/
-    /*float y = ay;*/
-    for (int x = ax; x < bx; x ++)
+    for (int x = ax; x <= bx; x ++)
     {
-        //static_cast<float>用于做整型转化为浮点型,存在精度缺失
         if ( steep )
             framebuffer.set(y, x, color);
         else
             framebuffer.set(x, y, color);
-        /*y += (by-ay) / static_cast<float>(bx-ax);*/
-        /*error += std::abs(by-ay)/static_cast<float>(bx-ax);
-        if (error>.5) 
-        {
-            y += by > ay ? 1 : -1;
-            error -= 1.;
-        }*/
         ierror += 2 * std::abs(by - ay);
         if ( ierror > bx - ax )
         {
@@ -51,48 +37,93 @@ void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
             ierror -= 2 * (bx - ax);
         }
     }
-        
-        
-    
-    //对于t的递增，涉及到采样率的问题，如果采样率过低，线可能出现空白区域
-    //对于cx到ax的线，采样率需要满足 1 / (62 - 7) = 0.018
-    /*for (float t = 0.; t <= 1.; t += .018)
-    {
-        //round是一个四舍五入
-        int x = std::round(ax + (bx - ax) * t);
-        int y = std::round(ay + (by - ay) * t);
-        //在图像上画某个点
-        framebuffer.set(x, y, color);
-    }*/
 }
 
+struct Vector3
+{
+    double x = 0, y = 0, z = 0;
+};
 int main(int argc, char** argv) {
-    constexpr int width  = 64;
-    constexpr int height = 64;
+    constexpr int width  = 4096;
+    constexpr int height = 4096;
     TGAImage framebuffer(width, height, TGAImage::RGB);
+    const std::string filename = "C:/Users/6/Desktop/Learn/tiny/tinyrenderer/obj/diablo3_pose/diablo3_pose.obj";
+    std::vector<Vector3> verts;
+    std::vector<Vector3> faces;
+    std::ifstream infile(filename);
+    if (!infile.is_open()) std::cerr << "Error opening file " << filename << std::endl;
+    
+    std::string line;
+    while (std::getline(infile, line))
+    {
+        std::istringstream iss(line);
+        std::string kind;
+        iss >> kind;                // 读取行首关键字：v / vt / vn / f ...
+        if (kind == "v") {          // 只匹配顶点行，不会误匹配 vt、vn
+            Vector3 v;
+            iss >> v.x >> v.y >> v.z;
+            verts.push_back(v);
+        }
+        else if ( kind == "f" )
+        {
+            Vector3 f;
+            for (int k = 0; k < 3; k++) {            // 每个面固定 3 个顶点
+                std::string token;
+                iss >> token;                        // 例如 "2469/2630/2469"
+                // 只取 '/' 前面的顶点下标，纹理/法线下标直接跳过
+                //stoi字符串转数字
+                int vi = std::stoi(token.substr(0, token.find('/')));
+                if (k == 0)      f.x = vi - 1;       // OBJ 从 1 开始，转成 0 起始
+                else if (k == 1) f.y = vi - 1;
+                else             f.z = vi - 1;
+            }
+            faces.push_back(f);
+        }
+    }
+    
+        /*在此处对vetrs做归一化*/
 
-    int ax =  7, ay =  3;
-    int bx = 12, by = 37;
-    int cx = 62, cy = 53;
+    // 将模型坐标从 [-1,1] 归一化到 [0,1]，避免负坐标越界被 set() 丢弃
+    for (int i = 0; i < (int)verts.size(); i++) {
+        verts[i].x = (verts[i].x + 1) / 2.0;
+        verts[i].y = (verts[i].y + 1) / 2.0;
+        verts[i].z = (verts[i].z + 1) / 2.0;
+    }
     
-    line(ax, ay, bx, by, framebuffer, blue);
-    line(cx, cy, bx, by, framebuffer, green);
-    line(cx, cy, ax, ay, framebuffer, yellow);
-    line(ax, ay, cx, cy, framebuffer, red);
+    for (int i = 0; i < faces.size(); i++)
+    {
+        int ax = (int)(verts[(int)faces[i].x].x * width) % (width);
+        int ay = (int)(verts[(int)faces[i].x].y * height) % (height);
+        int bx = (int)(verts[(int)faces[i].y].x * width) % (width);
+        int by = (int)(verts[(int)faces[i].y].y * height) % (height);
+        int cx = (int)(verts[(int)faces[i].z].x * width) % (width);
+        int cy = (int)(verts[(int)faces[i].z].y * height) % (height);
+        ::line(ax, ay, bx, by, framebuffer, red);
+        ::line(bx, by, cx, cy, framebuffer, red);
+        ::line(cx, cy, ax, ay, framebuffer, red);
+        framebuffer.set(ax, ay, white);
+        framebuffer.set(bx, by, white);
+        framebuffer.set(cx, cy, white);
+    }
     
-    /*std::srand(std::time({}));
-    for (int i=0; i<(1<<24); i++) {
-        int ax = rand()%width, ay = rand()%height;
-        int bx = rand()%width, by = rand()%height;
-        line(ax, ay, bx, by, framebuffer, { std::uint8_t(rand()%255), std::uint8_t(rand()%255),
-                                    std::uint8_t(rand()%255), std::uint8_t(rand()%255) });
+    /*std::cout << "顶点总数 = " << verts.size() << "\n";
+    for (int i = 0;i < (int)verts.size(); i++)
+        std::cout << "v[" << i << "] = (" << verts[i].x << ", "
+                  << verts[i].y << ", " << verts[i].z << ")\n";*/
+    
+    /*std::cout << "三角面总数 = " << faces.size() << "\n";
+    for (int i = 0;i < (int)faces.size(); i++)
+        std::cout << "face[" << i << "] = (" << faces[i].x << ", "
+                  << faces[i].y << ", " << faces[i].z << ")\n";*/
+    /*
+    std::cout << "三角面对应顶点的坐标 = " << faces.size() << "\n";
+    for (int i = 0;i < (int)faces.size(); i++) {
+        Vector3 f  = faces[i];
+        std::cout << "face[" << i << "]: ("
+                  << verts[(int)f.x].x << ", " << verts[(int)f.x].y << ", " << verts[(int)f.x].z << ")  ("
+                  << verts[(int)f.y].x << ", " << verts[(int)f.y].y << ", " << verts[(int)f.y].z << ")  ("
+                  << verts[(int)f.z].x << ", " << verts[(int)f.z].y << ", " << verts[(int)f.z].z << ")\n";
     }*/
-
-    
-    framebuffer.set(ax, ay, white);
-    framebuffer.set(bx, by, white);
-    framebuffer.set(cx, cy, white);
-
     framebuffer.write_tga_file("framebuffer.tga");
     return 0;
 }
