@@ -18,8 +18,8 @@ constexpr TGAColor red     = {  0,   0, 255, 255};
 constexpr TGAColor blue    = {255, 128,  64, 255};
 constexpr TGAColor yellow  = {  0, 200, 255, 255};
 
-constexpr int width  = 1024;
-constexpr int height = 1024;
+constexpr int width  = 64;
+constexpr int height = 64;
 
 void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
 {
@@ -70,7 +70,7 @@ double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
     return .5*((by-ay)*(bx+ax) + (cy-by)*(cx+bx) + (ay-cy)*(ax+cx));
 }
 
-void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuffer, TGAColor color)
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer)
 {
     int bbminx = (std::min(std::min(ax, bx), cx));
     int bbminy = (std::min(std::min(ay, by), cy));
@@ -90,8 +90,10 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuf
             double beta = signed_triangle_area(x, y, cx, cy, ax, ay) / total_area;
             double gamma = signed_triangle_area(x, y, ax, ay, bx, by) / total_area;
             if ( alpha < 0 || beta < 0 || gamma < 0 ) continue;
-            framebuffer.set(x, y, color);
+            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
+            framebuffer.set(x, y, {z});
         }
+        
     }
 }
 
@@ -109,7 +111,7 @@ int main(int argc, char** argv) {
     Model model(argv[1]);                       // 模型加载已封装进 Model 类（model.h/model.cpp）
     TGAImage framebuffer(width, height, TGAImage::RGB);
 
-    for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
+    /*for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
         auto [ax, ay] = project(model.vert(i, 0));
         auto [bx, by] = project(model.vert(i, 1));
         auto [cx, cy] = project(model.vert(i, 2));
@@ -120,7 +122,12 @@ int main(int argc, char** argv) {
         // line(ax, ay, bx, by, framebuffer, red);
         // line(bx, by, cx, cy, framebuffer, red);
         // line(cx, cy, ax, ay, framebuffer, red);
-    }
+    }*/
+    
+    int ax = 17, ay =  4, az =  13;
+    int bx = 55, by = 39, bz = 128;
+    int cx = 23, cy = 59, cz = 255;
+    triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);
 
     framebuffer.write_tga_file("framebuffer.tga");
     return 0;
