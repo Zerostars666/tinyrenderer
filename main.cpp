@@ -1,9 +1,14 @@
 ﻿#include <cstdlib>
+#include <cmath>
+#include <tuple>
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include "geometry.h"
+#include "model.h"
 #include "tgaimage.h"
 #include <vector>
 
@@ -12,6 +17,9 @@ constexpr TGAColor green   = {  0, 255,   0, 255};
 constexpr TGAColor red     = {  0,   0, 255, 255};
 constexpr TGAColor blue    = {255, 128,  64, 255};
 constexpr TGAColor yellow  = {  0, 200, 255, 255};
+
+constexpr int width  = 800;
+constexpr int height = 800;
 
 void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
 {
@@ -119,18 +127,29 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuf
     line(bx, by, cx, cy, framebuffer, white);
     line(cx, cy, ax, ay, framebuffer, white);
 }*/
+std::tuple<int,int> project(vec3 v) { // 正交投影：[-1,1] -> 屏幕坐标
+    return { (v.x + 1.) * width/2, (v.y + 1.) * height/2 };
+}
+
+//运行程序时携带的参数
 int main(int argc, char** argv) {
-    constexpr int width  = 128;
-    constexpr int height = 128;
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " obj/model.obj" << std::endl;
+        return 1;
+    }
+
+    Model model(argv[1]);                       // 模型加载已封装进 Model 类（model.h/model.cpp）
     TGAImage framebuffer(width, height, TGAImage::RGB);
-    
-    
-    triangle(  7, 45, 35, 100, 45,  60, framebuffer, red);
-    triangle(120, 35, 90,   5, 45, 110, framebuffer, blue);
-    triangle(115, 83, 80,  90, 85, 120, framebuffer, green);
-    
-    
+
+    for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
+        auto [ax, ay] = project(model.vert(i, 0));
+        auto [bx, by] = project(model.vert(i, 1));
+        auto [cx, cy] = project(model.vert(i, 2));
+        line(ax, ay, bx, by, framebuffer, red);
+        line(bx, by, cx, cy, framebuffer, red);
+        line(cx, cy, ax, ay, framebuffer, red);
+    }
+
     framebuffer.write_tga_file("framebuffer.tga");
     return 0;
 }
-
