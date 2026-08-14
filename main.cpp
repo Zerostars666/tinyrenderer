@@ -53,7 +53,37 @@ int line_x_at_y(int ax, int ay, int bx, int by, int targety) {
     return std::lround(ax + (bx - ax) * t);               // x = ax + (bx-ax)*t，四舍五入
 }
 
+//使用鞋带公式计算三角形面积
+double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
+    return .5*((by-ay)*(bx+ax) + (cy-by)*(cx+bx) + (ay-cy)*(ax+cx));
+}
+
 void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuffer, TGAColor color)
+{
+    int bbminx = (std::min(std::min(ax, bx), cx));
+    int bbminy = (std::min(std::min(ay, by), cy));
+    int bbmaxx = (std::max(std::max(ax, bx), cx));
+    int bbmaxy = (std::max(std::max(ay, by), cy));
+    
+    //利用重心坐标判断点是否在三角形内，重心坐标中三个参数的值由重心划分的小三角形 / 整个三角形面积获得
+    //与用叉乘判断在向量左右侧类似
+    double total_area = signed_triangle_area(ax, ay, bx, by, cx, cy);
+    
+    for (int x = bbminx; x <= bbmaxx; x ++)
+    {
+        for (int y = bbminy; y <= bbmaxy; y ++)
+        {
+            double alpha = signed_triangle_area(x, y, bx, by, cx, cy) / total_area;
+            double beta = signed_triangle_area(x, y, cx, cy, ax, ay) / total_area;
+            double gamma = signed_triangle_area(x, y, ax, ay, bx, by) / total_area;
+            if ( alpha < 0 || beta < 0 || gamma < 0 ) continue;
+            framebuffer.set(x, y, color);
+        }
+    }
+        
+}
+
+/*void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuffer, TGAColor color)
 {
     line(ax, ay, bx, by, framebuffer, color);
     line(bx, by, cx, cy, framebuffer, color);
@@ -88,7 +118,7 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuf
     line(ax, ay, bx, by, framebuffer, white);
     line(bx, by, cx, cy, framebuffer, white);
     line(cx, cy, ax, ay, framebuffer, white);
-}
+}*/
 int main(int argc, char** argv) {
     constexpr int width  = 128;
     constexpr int height = 128;
