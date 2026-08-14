@@ -18,8 +18,8 @@ constexpr TGAColor red     = {  0,   0, 255, 255};
 constexpr TGAColor blue    = {255, 128,  64, 255};
 constexpr TGAColor yellow  = {  0, 200, 255, 255};
 
-constexpr int width  = 64;
-constexpr int height = 64;
+constexpr int width  = 1024;
+constexpr int height = 1024;
 
 void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
 {
@@ -90,8 +90,16 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
             double beta = signed_triangle_area(x, y, cx, cy, ax, ay) / total_area;
             double gamma = signed_triangle_area(x, y, ax, ay, bx, by) / total_area;
             if ( alpha < 0 || beta < 0 || gamma < 0 ) continue;
-            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
-            framebuffer.set(x, y, {z});
+            //只绘制边框
+            const double eps = 0.1;                                     // 边框粗细，越小越细
+            if (alpha > eps && beta > eps && gamma > eps) continue;      // 三条边都不近 → 内部，跳过
+            TGAColor color;
+            //绘制彩色
+            color.bgra[0] = alpha * az;
+            color.bgra[1] = beta * bz;
+            color.bgra[2] = gamma * cz;
+            color.bgra[3] = 255;
+            framebuffer.set(x, y, color);
         }
         
     }
@@ -111,23 +119,28 @@ int main(int argc, char** argv) {
     Model model(argv[1]);                       // 模型加载已封装进 Model 类（model.h/model.cpp）
     TGAImage framebuffer(width, height, TGAImage::RGB);
 
-    /*for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
-        auto [ax, ay] = project(model.vert(i, 0));
-        auto [bx, by] = project(model.vert(i, 1));
-        auto [cx, cy] = project(model.vert(i, 2));
-        TGAColor rnd;
-        for (int c = 0; c < 3; c++) rnd[c] = std::rand()%255;
-        triangle(ax, ay, bx, by, cx, cy, framebuffer, rnd);
-        
-        // line(ax, ay, bx, by, framebuffer, red);
-        // line(bx, by, cx, cy, framebuffer, red);
-        // line(cx, cy, ax, ay, framebuffer, red);
-    }*/
+    for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
+        vec3 v0 = model.vert(i, 0);
+        vec3 v1 = model.vert(i, 1);
+        vec3 v2 = model.vert(i, 2);
+
+        auto [ax, ay] = project(v0);
+        auto [bx, by] = project(v1);
+        auto [cx, cy] = project(v2);
+
+        // 模型空间 z 在 [-1,1]，映射到 [0,255] 才能当颜色强度显示
+        // 模型空间的z指的是深度，所以会明暗
+        int az = static_cast<int>((v0.z + 1.0) * 127.5);
+        int bz = static_cast<int>((v1.z + 1.0) * 127.5);
+        int cz = static_cast<int>((v2.z + 1.0) * 127.5);
+
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);
+    }
     
-    int ax = 17, ay =  4, az =  13;
-    int bx = 55, by = 39, bz = 128;
+    /*int ax = 17, ay =  4, az =  192;
+    int bx = 55, by = 39, bz = 192;
     int cx = 23, cy = 59, cz = 255;
-    triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);
+    triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);*/
 
     framebuffer.write_tga_file("framebuffer.tga");
     return 0;
