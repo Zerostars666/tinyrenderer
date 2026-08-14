@@ -18,8 +18,8 @@ constexpr TGAColor red     = {  0,   0, 255, 255};
 constexpr TGAColor blue    = {255, 128,  64, 255};
 constexpr TGAColor yellow  = {  0, 200, 255, 255};
 
-constexpr int width  = 800;
-constexpr int height = 800;
+constexpr int width  = 1024;
+constexpr int height = 1024;
 
 void line(int ax, int ay, int bx, int by, TGAImage &framebuffer, TGAColor color)
 {
@@ -61,7 +61,11 @@ int line_x_at_y(int ax, int ay, int bx, int by, int targety) {
     return std::lround(ax + (bx - ax) * t);               // x = ax + (bx-ax)*t，四舍五入
 }
 
-//使用鞋带公式计算三角形面积
+//使用鞋带公式计算三角形面积,带符号的
+// //½[(by-ay)(bx+ax) + (cy-by)(cx+bx) + (ay-cy)(ax+cx)]
+// = ½[ax·by - ay·bx + bx·cy - by·cx + cx·ay - cy·ax]
+// = ½[(B-A) × (C-A)]
+// 平行四边形法则下的 叉乘
 double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
     return .5*((by-ay)*(bx+ax) + (cy-by)*(cx+bx) + (ay-cy)*(ax+cx));
 }
@@ -76,6 +80,7 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuf
     //利用重心坐标判断点是否在三角形内，重心坐标中三个参数的值由重心划分的小三角形 / 整个三角形面积获得
     //与用叉乘判断在向量左右侧类似
     double total_area = signed_triangle_area(ax, ay, bx, by, cx, cy);
+    if (total_area < 1) return;
     
     for (int x = bbminx; x <= bbmaxx; x ++)
     {
@@ -88,45 +93,8 @@ void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuf
             framebuffer.set(x, y, color);
         }
     }
-        
 }
 
-/*void triangle(int ax, int ay, int bx, int by, int cx, int cy, TGAImage &framebuffer, TGAColor color)
-{
-    line(ax, ay, bx, by, framebuffer, color);
-    line(bx, by, cx, cy, framebuffer, color);
-    line(cx, cy, ax, ay, framebuffer, color);
-    line(ax, ay, bx, by, framebuffer, white);
-    line(bx, by, cx, cy, framebuffer, white);
-    line(cx, cy, ax, ay, framebuffer, white);
-    
-    auto f = [](int &ax, int &ay, int &bx, int &by) { std::swap(ax, bx); std::swap(ay, by); };
-    
-    if ( ay > by ) f(ax, ay, bx, by);
-    if ( by > cy ) f(bx, by, cx, cy);
-    if ( ay > by ) f(ax, ay, bx, by);
-    
-    //std::cout << "color:" << "ay:" << ay << "by:" << by << "cy:" << cy << std::endl;
-    
-    for (int y = ay; y <= by; y ++)
-    {
-        int x1 = line_x_at_y(ax, ay, cx, cy, y);
-        int x2 = line_x_at_y(ax, ay, bx, by, y);
-        if ( x1 == -1 || x2 == -1 ) continue;
-        line(x1, y, x2, y, framebuffer, color);
-    }
-    for (int y = by; y <= cy; y ++)
-    {
-        int x1 = line_x_at_y(ax, ay, cx, cy, y);
-        int x2 = line_x_at_y(bx, by, cx, cy, y);
-        if ( x1 == -1 || x2 == -1 ) continue;
-        line(x1, y, x2, y, framebuffer, color);
-    }
-    
-    line(ax, ay, bx, by, framebuffer, white);
-    line(bx, by, cx, cy, framebuffer, white);
-    line(cx, cy, ax, ay, framebuffer, white);
-}*/
 std::tuple<int,int> project(vec3 v) { // 正交投影：[-1,1] -> 屏幕坐标
     return { (v.x + 1.) * width/2, (v.y + 1.) * height/2 };
 }
@@ -145,9 +113,13 @@ int main(int argc, char** argv) {
         auto [ax, ay] = project(model.vert(i, 0));
         auto [bx, by] = project(model.vert(i, 1));
         auto [cx, cy] = project(model.vert(i, 2));
-        line(ax, ay, bx, by, framebuffer, red);
-        line(bx, by, cx, cy, framebuffer, red);
-        line(cx, cy, ax, ay, framebuffer, red);
+        TGAColor rnd;
+        for (int c = 0; c < 3; c++) rnd[c] = std::rand()%255;
+        triangle(ax, ay, bx, by, cx, cy, framebuffer, rnd);
+        
+        // line(ax, ay, bx, by, framebuffer, red);
+        // line(bx, by, cx, cy, framebuffer, red);
+        // line(cx, cy, ax, ay, framebuffer, red);
     }
 
     framebuffer.write_tga_file("framebuffer.tga");
