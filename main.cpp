@@ -71,7 +71,7 @@ double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
     return .5*((by-ay)*(bx+ax) + (cy-by)*(cx+bx) + (ay-cy)*(ax+cx));
 }
 
-void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer, TGAImage &Zbuffer,TGAColor color)
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer, std::vector<int> &zbuffer, TGAColor color)
 {
     //需要规定屏幕大小
     int bbminx = std::max(0, std::min(std::min(ax, bx), cx));
@@ -92,9 +92,10 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
             double beta = signed_triangle_area(x, y, cx, cy, ax, ay) / total_area;
             double gamma = signed_triangle_area(x, y, ax, ay, bx, by) / total_area;
             if ( alpha < 0 || beta < 0 || gamma < 0 ) continue;
-            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
-            if ( z <= Zbuffer.get(x, y)[0] ) continue;
-            Zbuffer.set(x, y, {z});
+            int z = static_cast<int>(alpha * az + beta * bz + gamma * cz);
+            int idx = x + y * framebuffer.width();
+            if ( z <= zbuffer[idx] ) continue;
+            zbuffer[idx] = z;
             framebuffer.set(x, y, color);
         }
         
@@ -112,6 +113,13 @@ vec3 rot(vec3 v)
     return Ry * v;
 }
 
+vec3 presp(vec3 v)
+{
+    //c = 3， 表示摄像机在距离物体为3的位置上
+    static const double c = 3;
+    return v / (1 - v.z/c);
+}
+
 std::tuple<int,int,int> project(vec3 v) { 
     return { (v.x + 1.) *  width/2,       
              (v.y + 1.) * height/2,      
@@ -127,20 +135,20 @@ int main(int argc, char** argv) {
 
     Model model(argv[1]);                       // 模型加载已封装进 Model 类（model.h/model.cpp）
     TGAImage framebuffer(width, height, TGAImage::RGB);
-    TGAImage Zbuffer(width, height, TGAImage::GRAYSCALE); // 深度图
+    std::vector<int> zbuffer(width * height, -1); // 深度缓冲，-1 表示未绘制
 
     for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
         vec3 v0 = model.vert(i, 0);
         vec3 v1 = model.vert(i, 1);
         vec3 v2 = model.vert(i, 2);
 
-        auto [ax, ay, az] = project(rot(v0));
-        auto [bx, by, bz] = project(rot(v1));
-        auto [cx, cy, cz] = project(rot(v2));
+        auto [ax, ay, az] = project(presp(rot(v0)));
+        auto [bx, by, bz] = project(presp(rot(v1)));
+        auto [cx, cy, cz] = project(presp(rot(v2)));
         
         TGAColor rnd;
         for (int c = 0; c < 3; c++) rnd[c] = std::rand()%255;
-        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer,Zbuffer, rnd);
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer, zbuffer, rnd);
     }
     
     /*int ax = 17, ay =  4, az =  192;
@@ -149,6 +157,11 @@ int main(int argc, char** argv) {
     triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);*/
 
     framebuffer.write_tga_file("framebuffer.tga");
-    Zbuffer.write_tga_file("zbuffer.tga");
+    TGAImage zbuf_img(width, height, TGAImage::GRAYSCALE); // 仅用于可视化：把 int 深度 clamp 到 0~255
+    for (int x = 0; x < width; x++)
+        for (int y = 0; y < height; y++)
+            zbuf_img.set(x, y, {static_cast<unsigned char>(
+                std::clamp(zbuffer[x + y*width], 0, 255))});
+    zbuf_img.write_tga_file("zbuffer.tga");
     return 0;
 }
