@@ -86,6 +86,8 @@ inline vec3 cross(const vec3 &v1, const vec3 &v2) {
 
 template<int n> struct dt;
 
+
+//矩阵相关运算
 template<int nrows,int ncols> struct mat {
     vec<ncols> rows[nrows] = {{}};
 

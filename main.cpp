@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <numbers>
 #include <sstream>
 #include <string>
 #include "geometry.h"
@@ -72,10 +73,11 @@ double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
 
 void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer, TGAImage &Zbuffer,TGAColor color)
 {
-    int bbminx = (std::min(std::min(ax, bx), cx));
-    int bbminy = (std::min(std::min(ay, by), cy));
-    int bbmaxx = (std::max(std::max(ax, bx), cx));
-    int bbmaxy = (std::max(std::max(ay, by), cy));
+    //需要规定屏幕大小
+    int bbminx = std::max(0, std::min(std::min(ax, bx), cx));
+    int bbminy = std::max(0, std::min(std::min(ay, by), cy));
+    int bbmaxx = std::min(framebuffer.width() -1, std::max(std::max(ax, bx), cx));
+    int bbmaxy = std::min(framebuffer.height()-1, std::max(std::max(ay, by), cy));
     
     //利用重心坐标判断点是否在三角形内，重心坐标中三个参数的值由重心划分的小三角形 / 整个三角形面积获得
     //与用叉乘判断在向量左右侧类似
@@ -99,8 +101,21 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
     }
 }
 
-std::tuple<int,int> project(vec3 v) { // 正交投影：[-1,1] -> 屏幕坐标
-    return { (v.x + 1.) * width/2, (v.y + 1.) * height/2 };
+//旋转公式，我们往往不会让摄像机旋转，而是场景在进行旋转
+vec3 rot(vec3 v)
+{
+    //所有顶点共用一个，使用Static节省
+    static const double a = std::numbers::pi / 6;
+    static const mat<3,3> Ry = {{{std::cos(a), 0, std::sin(a)},
+                                 {0, 1, 0},
+                                 {-std::sin(a), 0, std::cos(a)}}};
+    return Ry * v;
+}
+
+std::tuple<int,int,int> project(vec3 v) { 
+    return { (v.x + 1.) *  width/2,       
+             (v.y + 1.) * height/2,      
+             (v.z + 1.) *   255./2 };
 }
 
 //运行程序时携带的参数
@@ -119,15 +134,10 @@ int main(int argc, char** argv) {
         vec3 v1 = model.vert(i, 1);
         vec3 v2 = model.vert(i, 2);
 
-        auto [ax, ay] = project(v0);
-        auto [bx, by] = project(v1);
-        auto [cx, cy] = project(v2);
-
-        // 模型空间 z 在 [-1,1]，映射到 [0,255] 才能当颜色强度显示
-        // 模型空间的z指的是深度，所以会明暗
-        int az = static_cast<int>((v0.z + 1.0) * 127.5);
-        int bz = static_cast<int>((v1.z + 1.0) * 127.5);
-        int cz = static_cast<int>((v2.z + 1.0) * 127.5);
+        auto [ax, ay, az] = project(rot(v0));
+        auto [bx, by, bz] = project(rot(v1));
+        auto [cx, cy, cz] = project(rot(v2));
+        
         TGAColor rnd;
         for (int c = 0; c < 3; c++) rnd[c] = std::rand()%255;
         triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer,Zbuffer, rnd);
