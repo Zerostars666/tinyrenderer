@@ -70,7 +70,7 @@ double signed_triangle_area(int ax, int ay, int bx, int by, int cx, int cy) {
     return .5*((by-ay)*(bx+ax) + (cy-by)*(cx+bx) + (ay-cy)*(ax+cx));
 }
 
-void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer)
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &framebuffer, TGAImage &Zbuffer,TGAColor color)
 {
     int bbminx = (std::min(std::min(ax, bx), cx));
     int bbminy = (std::min(std::min(ay, by), cy));
@@ -90,15 +90,9 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
             double beta = signed_triangle_area(x, y, cx, cy, ax, ay) / total_area;
             double gamma = signed_triangle_area(x, y, ax, ay, bx, by) / total_area;
             if ( alpha < 0 || beta < 0 || gamma < 0 ) continue;
-            //只绘制边框
-            const double eps = 0.1;                                     // 边框粗细，越小越细
-            if (alpha > eps && beta > eps && gamma > eps) continue;      // 三条边都不近 → 内部，跳过
-            TGAColor color;
-            //绘制彩色
-            color.bgra[0] = alpha * az;
-            color.bgra[1] = beta * bz;
-            color.bgra[2] = gamma * cz;
-            color.bgra[3] = 255;
+            unsigned char z = static_cast<unsigned char>(alpha * az + beta * bz + gamma * cz);
+            if ( z <= Zbuffer.get(x, y)[0] ) continue;
+            Zbuffer.set(x, y, {z});
             framebuffer.set(x, y, color);
         }
         
@@ -118,6 +112,7 @@ int main(int argc, char** argv) {
 
     Model model(argv[1]);                       // 模型加载已封装进 Model 类（model.h/model.cpp）
     TGAImage framebuffer(width, height, TGAImage::RGB);
+    TGAImage Zbuffer(width, height, TGAImage::GRAYSCALE); // 深度图
 
     for (int i = 0; i < model.nfaces(); i++) {  // 遍历所有三角形
         vec3 v0 = model.vert(i, 0);
@@ -133,8 +128,9 @@ int main(int argc, char** argv) {
         int az = static_cast<int>((v0.z + 1.0) * 127.5);
         int bz = static_cast<int>((v1.z + 1.0) * 127.5);
         int cz = static_cast<int>((v2.z + 1.0) * 127.5);
-
-        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);
+        TGAColor rnd;
+        for (int c = 0; c < 3; c++) rnd[c] = std::rand()%255;
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer,Zbuffer, rnd);
     }
     
     /*int ax = 17, ay =  4, az =  192;
@@ -143,5 +139,6 @@ int main(int argc, char** argv) {
     triangle(ax, ay, az, bx, by, bz, cx, cy, cz, framebuffer);*/
 
     framebuffer.write_tga_file("framebuffer.tga");
+    Zbuffer.write_tga_file("zbuffer.tga");
     return 0;
 }
