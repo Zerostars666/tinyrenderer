@@ -1,8 +1,14 @@
-#include <iostream>
+﻿#include <iostream>
 #include <cstring>
 #include "tgaimage.h"
 
 TGAImage::TGAImage(const int w, const int h, const int bpp) : w(w), h(h), bpp(bpp), data(w*h*bpp, 0) {}
+
+TGAImage::TGAImage(const int w, const int h, const int bpp, const TGAColor &background) : TGAImage(w, h, bpp) {
+    for (int p = 0; p < w*h*bpp; p += bpp)   // 用背景色填满整张图
+        for (int c = 0; c < bpp; c++)
+            data[p+c] = background.bgra[c];
+}
 
 bool TGAImage::read_tga_file(const std::string filename) {
     std::ifstream in;
