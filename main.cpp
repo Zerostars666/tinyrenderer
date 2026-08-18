@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    constexpr int width  = 800;      // output image size
-    constexpr int height = 800;
+    constexpr int width  = 2048;      // output image size
+    constexpr int height = 2048;
     constexpr vec3  light{ 1, 1, 1}; // light source
     constexpr vec3    eye{0, 0, 2}; // camera position
     constexpr vec3 center{ 0, 0, 0}; // camera direction
