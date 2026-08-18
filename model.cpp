@@ -48,7 +48,9 @@ Model::Model(const std::string filename) {
         std::string texfile = filename.substr(0,dot) + suffix;
         std::cerr << "texture file " << texfile << " loading " << (img.read_tga_file(texfile.c_str()) ? "ok" : "failed") << std::endl;
     };
-    load_texture("_nm.tga", normalmap);
+    load_texture("_diffuse.tga", diffusemap);  // 加载漫反射颜色贴图
+    load_texture("_nm.tga",      normalmap);   // 加载法线贴图
+    load_texture("_spec.tga",    specularmap); // 加载高光权重贴图
 }
 
 int Model::nverts() const { return verts.size(); }
@@ -80,4 +82,7 @@ vec4 Model::normal(const vec2 &uv) const {
 vec2 Model::uv(const int iface, const int nthvert) const {
     return tex[facet_tex[iface*3+nthvert]];
 }
+
+const TGAImage& Model::diffuse()  const { return diffusemap;  }
+const TGAImage& Model::specular() const { return specularmap; }
 

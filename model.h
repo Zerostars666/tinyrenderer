@@ -23,6 +23,10 @@ class Model {
 
     // 法线贴图：由 xxx.obj 同目录下的 xxx_nm.tga 加载而来
     TGAImage normalmap = {};
+    // 漫反射颜色贴图：由 xxx_diffuse.tga 加载而来（模型的基础颜色）
+    TGAImage diffusemap = {};
+    // 高光权重贴图：由 xxx_spec.tga 加载而来（控制每个像素高光的强弱）
+    TGAImage specularmap = {};
 
 public:
     // 构造：读入 .obj 文件，解析 v/vn/vt/f 四类行，并加载法线贴图
@@ -45,4 +49,9 @@ public:
 
     // 第 iface 个三角形、第 nthvert 个角点的纹理坐标（uv）
     vec2 uv(const int iface, const int nthvert) const;
+
+    // 返回漫反射贴图（供片元着色器采样）
+    const TGAImage& diffuse()  const;
+    // 返回高光贴图（供片元着色器采样）
+    const TGAImage& specular() const;
 };

@@ -23,16 +23,15 @@ struct PhongShader : IShader {
     
     //片元着色器,每一个点会传入一个重心坐标进来
     virtual std::pair<bool,TGAColor> fragment(const vec3 bar) const {
-        TGAColor gl_FragColor = {255, 255, 255, 255};             // output color of the fragment
         vec2 uv = varying_uv[0] * bar[0] + varying_uv[1] * bar[1] + varying_uv[2] * bar[2];
-        vec4 n = normalized(ModelView.invert_transpose() * model.normal(uv)); //注意此处进行了转置取反
-        vec4 r = normalized(n * (n * l)*2 - l);                   // reflected light direction
-        double ambient = .3;                                      // ambient light intensity
-        double diff = std::max(0., n * l);                        // diffuse light intensity
-        double spec = std::pow(std::max(r.z, 0.), 35);            // specular intensity, note that the camera lies on the z-axis (in eye coordinates), therefore simple r.z, since (0,0,1)*(r.x, r.y, r.z) = r.z
-        //对RGB三个通道进行运算，得到每个通道对应的值
-        for (int channel : {0,1,2})
-            gl_FragColor[channel] *= std::min(1., ambient + .4*diff + .9*spec);
+        vec4 n = normalized(ModelView.invert_transpose() * model.normal(uv)); // 法线：从法线贴图采样后变换到眼空间
+        vec4 r = normalized(n * (n * l)*2 - l);                   // 反射光方向
+        double ambient  = .4;                                     // 环境光强度
+        double diffuse  = 1.*std::max(0., n * l);                 // 漫反射强度
+        double specular = (3.*sample2D(model.specular(), uv)[0]/255.) * std::pow(std::max(r.z, 0.), 35); // 高光强度 × 高光贴图权重
+        TGAColor gl_FragColor = sample2D(model.diffuse(), uv);    // 从漫反射贴图采样基础颜色
+        for (int channel : {0,1,2})                               // 逐通道：颜色 × (环境光 + 漫反射 + 高光)
+            gl_FragColor[channel] = std::min<int>(255, gl_FragColor[channel]*(ambient + diffuse + specular));
         return {false, gl_FragColor};                             // do not discard the pixel
     }
 };
@@ -46,7 +45,7 @@ int main(int argc, char** argv) {
     constexpr int width  = 800;      // output image size
     constexpr int height = 800;
     constexpr vec3  light{ 1, 1, 1}; // light source
-    constexpr vec3    eye{-1, 0, 2}; // camera position
+    constexpr vec3    eye{0, 0, 2}; // camera position
     constexpr vec3 center{ 0, 0, 0}; // camera direction
     constexpr vec3     up{ 0, 1, 0}; // camera up vector
 
