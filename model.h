@@ -1,25 +1,48 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "geometry.h"
-#include "tgaimage.h"
+#include "geometry.h"   // vec2/vec3/vec4、mat<4,4> 等数学类型
+#include "tgaimage.h"   // TGAImage、TGAColor（法线贴图就用它存）
 
+// Model：负责解析 .obj 文件，并把"模型数据"提供给渲染器（顶点、法线、纹理坐标、法线贴图）
 class Model {
-    std::vector<vec4> verts = {};    // array of vertices        ┐ generally speaking, these arrays
-    std::vector<vec4> norms = {};    // array of normal vectors  │ do not have the same size
-    std::vector<vec2> tex = {};      // array of tex coords      ┘ check the logs of the Model() constructor
-    std::vector<int> facet_vrt = {}; //  ┐ per-triangle indices in the above arrays,
-    std::vector<int> facet_nrm = {}; //  │ the size is supposed to be
-    std::vector<int> facet_tex = {}; //  ┘ nfaces()*3
-    TGAImage normalmap   = {};       // normal map texture
-public:
-    Model(const std::string filename);
-    int nverts() const; // number of vertices
-    int nfaces() const; // number of triangles
-    vec4 vert(const int i) const;                          // 0 <= i < nverts()
-    vec4 vert(const int iface, const int nthvert) const;   // 0 <= iface <= nfaces(), 0 <= nthvert < 3
-    vec4 normal(const int iface, const int nthvert) const; // normal coming from the "vn x y z" entries in the .obj file
-    vec4 normal(const vec2 &uv) const;                     // normal vector from the normal map texture
-    vec2 uv(const int iface, const int nthvert) const;     // uv coordinates of triangle corners
-};
+    // ─── 数据数组：每一类数据各自一个数组 ───
+    // .obj 里的 v 行（顶点坐标），存成 vec4，w=1（齐次坐标，方便和 4x4 矩阵相乘）
+    std::vector<vec4> verts = {};
+    // .obj 里的 vn 行（顶点法线），存成 vec4，w=0（方向向量，矩阵变换时不做平移）
+    std::vector<vec4> norms = {};
+    // .obj 里的 vt 行（纹理坐标 u,v），存成 vec2
+    std::vector<vec2> tex = {};
 
+    // ─── 索引数组：每个三角形 3 个角点，各存一个下标 ───
+    // 注意：上面三个数组是"去重后的数据池"，数量各不相同；
+    // 下面三个数组记录"第几个面、第几个角点"对应数据池里的第几个，所以大小都是 nfaces()*3
+    std::vector<int> facet_vrt = {}; // 每个角点 → verts 的下标
+    std::vector<int> facet_nrm = {}; // 每个角点 → norms 的下标
+    std::vector<int> facet_tex = {}; // 每个角点 → tex  的下标
+
+    // 法线贴图：由 xxx.obj 同目录下的 xxx_nm.tga 加载而来
+    TGAImage normalmap = {};
+
+public:
+    // 构造：读入 .obj 文件，解析 v/vn/vt/f 四类行，并加载法线贴图
+    Model(const std::string filename);
+
+    // 顶点总数（verts.size()）
+    int nverts() const;
+    // 三角形总数（facet_vrt.size()/3）
+    int nfaces() const;
+
+    // 第 i 个顶点坐标（i 是数据池下标，0 <= i < nverts()）
+    vec4 vert(const int i) const;
+    // 第 iface 个三角形、第 nthvert 个角点的顶点坐标（nthvert = 0/1/2）
+    vec4 vert(const int iface, const int nthvert) const;
+
+    // 第 iface 个三角形、第 nthvert 个角点的顶点法线（来自 .obj 的 vn）
+    vec4 normal(const int iface, const int nthvert) const;
+    // 按纹理坐标 uv 从法线贴图里采样出一个法线（逐像素，用于法线贴图）
+    vec4 normal(const vec2 &uv) const;
+
+    // 第 iface 个三角形、第 nthvert 个角点的纹理坐标（uv）
+    vec2 uv(const int iface, const int nthvert) const;
+};

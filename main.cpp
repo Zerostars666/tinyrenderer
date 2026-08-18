@@ -7,27 +7,30 @@ extern std::vector<double> zbuffer;     // the depth buffer
 
 struct PhongShader : IShader {
     const Model &model;
-    vec4 l;              // light direction in eye coordinates
-    vec2 varying_uv[3];  // triangle uv coordinates, written by the vertex shader, read by the fragment shader
+    vec4 l;              // light direction in eye coordinates 在摄像机坐标系下的光线方向
+    vec2 varying_uv[3];  // triangle uv coordinates, written by the vertex shader, read by the fragment shader UV坐标
 
     PhongShader(const vec3 light, const Model &m) : model(m) {
         l = normalized((ModelView*vec4{light.x, light.y, light.z, 0.})); // transform the light vector to view coordinates
     }
-
+    
+    //顶点着色器
     virtual vec4 vertex(const int face, const int vert) {
-        varying_uv[vert] = model.uv(face, vert);
-        vec4 gl_Position = ModelView * model.vert(face, vert);
+        varying_uv[vert] = model.uv(face, vert); //获取每个顶点的UV坐标
+        vec4 gl_Position = ModelView * model.vert(face, vert); //返回视角转换后的顶点位置
         return Perspective * gl_Position;                         // in clip coordinates
     }
-
+    
+    //片元着色器,每一个点会传入一个重心坐标进来
     virtual std::pair<bool,TGAColor> fragment(const vec3 bar) const {
         TGAColor gl_FragColor = {255, 255, 255, 255};             // output color of the fragment
         vec2 uv = varying_uv[0] * bar[0] + varying_uv[1] * bar[1] + varying_uv[2] * bar[2];
-        vec4 n = normalized(ModelView.invert_transpose() * model.normal(uv));
+        vec4 n = normalized(ModelView.invert_transpose() * model.normal(uv)); //注意此处进行了转置取反
         vec4 r = normalized(n * (n * l)*2 - l);                   // reflected light direction
         double ambient = .3;                                      // ambient light intensity
         double diff = std::max(0., n * l);                        // diffuse light intensity
         double spec = std::pow(std::max(r.z, 0.), 35);            // specular intensity, note that the camera lies on the z-axis (in eye coordinates), therefore simple r.z, since (0,0,1)*(r.x, r.y, r.z) = r.z
+        //对RGB三个通道进行运算，得到每个通道对应的值
         for (int channel : {0,1,2})
             gl_FragColor[channel] *= std::min(1., ambient + .4*diff + .9*spec);
         return {false, gl_FragColor};                             // do not discard the pixel
@@ -43,7 +46,7 @@ int main(int argc, char** argv) {
     constexpr int width  = 800;      // output image size
     constexpr int height = 800;
     constexpr vec3  light{ 1, 1, 1}; // light source
-    constexpr vec3    eye{0, 0, 2}; // camera position
+    constexpr vec3    eye{-1, 0, 2}; // camera position
     constexpr vec3 center{ 0, 0, 0}; // camera direction
     constexpr vec3     up{ 0, 1, 0}; // camera up vector
 
@@ -57,6 +60,7 @@ int main(int argc, char** argv) {
         Model model(argv[m]);                       // load the data
         PhongShader shader(light, model);
         for (int f=0; f<model.nfaces(); f++) {      // iterate through all facets
+            //满足现代渲染管线的阶段，先传入顶点作顶点着色器(作顶点的视角变换)，顶点组成原型Clip，进入光栅化阶段，对每个像素采样并进入fragment片元着色器，全部渲染好后进行着色
             Triangle clip = { shader.vertex(f, 0),  // assemble the primitive
                               shader.vertex(f, 1),
                               shader.vertex(f, 2) };

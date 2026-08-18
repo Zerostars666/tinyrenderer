@@ -19,6 +19,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU|Intel")
   add_compile_options(-Wall)
 endif()
 
+if(MSVC)
+  add_compile_options(/utf-8) # 源文件按 UTF-8 读取，否则中文注释会被按 GBK 误读导致解析错乱
+endif()
+
 find_package(OpenMP COMPONENTS CXX)
 
 set(SOURCES main.cpp model.cpp tgaimage.cpp our_gl.cpp)
