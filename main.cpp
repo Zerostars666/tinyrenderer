@@ -2,8 +2,21 @@
 #include "our_gl.h"
 #include "model.h"
 
-extern mat<4,4> ModelView, Perspective; // "OpenGL" state matrices and
-extern std::vector<double> zbuffer;     // the depth buffer
+extern mat<4,4> Viewport, ModelView, Perspective; // "OpenGL" 状态矩阵
+extern std::vector<double> zbuffer;               // 深度缓冲
+
+// 第一趟（光源视角）使用的"空"着色器：只需写入深度，颜色随意
+struct EmptyShader : IShader {
+    const Model &model;
+    EmptyShader(const Model &m) : model(m) {}
+    virtual vec4 vertex(const int face, const int vert) {
+        vec4 gl_Position = ModelView * model.vert(face, vert); // 顶点变换到裁剪坐标
+        return Perspective * gl_Position;
+    }
+    virtual std::pair<bool,TGAColor> fragment(const vec3 bar) const {
+        return {false, {255, 255, 255, 255}};     // 返回白色即可，深度由光栅化写入
+    }
+};
 
 struct PhongShader : IShader {
     const Model &model;
@@ -53,32 +66,77 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    constexpr int width  = 2048;      // output image size
+    constexpr int width  = 2048;      // 最终输出图像尺寸
     constexpr int height = 2048;
-    constexpr vec3  light{ 1, 1, 1}; // light source
-    constexpr vec3    eye{0, 0, 2}; // camera position
-    constexpr vec3 center{ 0, 0, 0}; // camera direction
-    constexpr vec3     up{ 0, 1, 0}; // camera up vector
+    constexpr int shadoww = 8000;     // 阴影贴图分辨率（越高阴影边缘越锐利，也越费内存）
+    constexpr int shadowh = 8000;
+    constexpr vec3  light{ 1, 1, 1}; // light source 光源位置
+    constexpr vec3    eye{0, 0, 2}; // camera position 相机位置
+    constexpr vec3 center{ 0, 0, 0}; // camera direction 相机看向的目标
+    constexpr vec3     up{ 0, 1, 0}; // camera up vector 相机上方向
 
-    lookat(eye, center, up);                                   // build the ModelView   matrix
-    init_perspective(norm(eye-center));                        // build the Perspective matrix
-    init_viewport(width/16, height/16, width*7/8, height*7/8); // build the Viewport    matrix
+    std::vector<double> zshadow;    // 阴影贴图：从光源视角看到的最近深度
+    mat<4,4> ShadowMatrix;          // 光源视角的完整变换链 Viewport*Perspective*ModelView
+
+    { // ===== 第一趟：从光源视角渲染，只记录深度（阴影贴图） =====
+        lookat(light, center, up);                                   // 把"光源"当作相机
+        init_perspective(norm(eye-center));                          // 透视投影
+        init_viewport(shadoww/16, shadowh/16, shadoww*7/8, shadowh*7/8); // 视口
+        init_zbuffer(shadoww, shadowh);                              // 光源视角的深度缓冲
+        TGAImage shadow_fb(shadoww, shadowh, TGAImage::RGB, {177, 195, 209, 255});
+
+        for (int m=1; m<argc; m++) {                    // 遍历所有输入模型
+            Model model(argv[m]);
+            EmptyShader shader{model};                  // 只写深度，颜色无所谓
+            for (int f=0; f<model.nfaces(); f++) {
+                Triangle clip = { shader.vertex(f, 0),  // 顶点着色 → 组装三角形
+                                  shader.vertex(f, 1),
+                                  shader.vertex(f, 2) };
+                rasterize(clip, shader, shadow_fb);     // 光栅化（写入深度）
+            }
+        }
+        zshadow = zbuffer;                                  // 保存阴影贴图（深度值）
+        ShadowMatrix = Viewport * Perspective * ModelView;  // 保存光源变换链
+        shadow_fb.write_tga_file("shadowmap.tga");          // 可视化阴影贴图
+    }
+
+    // ===== 第二趟：从相机视角正常渲染（切空间 Phong 着色） =====
+    lookat(eye, center, up);                                   // 恢复相机视角
+    init_perspective(norm(eye-center));
+    init_viewport(width/16, height/16, width*7/8, height*7/8);
     init_zbuffer(width, height);
     TGAImage framebuffer(width, height, TGAImage::RGB);
 
-    for (int m=1; m<argc; m++) {                    // iterate through all input objects
-        Model model(argv[m]);                       // load the data
+    for (int m=1; m<argc; m++) {                    // 遍历所有输入模型
+        Model model(argv[m]);
         PhongShader shader(light, model);
-        for (int f=0; f<model.nfaces(); f++) {      // iterate through all facets
-            //满足现代渲染管线的阶段，先传入顶点作顶点着色器(作顶点的视角变换)，顶点组成原型Clip，进入光栅化阶段，对每个像素采样并进入fragment片元着色器，全部渲染好后进行着色
-            Triangle clip = { shader.vertex(f, 0),  // assemble the primitive
+        for (int f=0; f<model.nfaces(); f++) {
+            Triangle clip = { shader.vertex(f, 0),  // 顶点着色 → 组装三角形
                               shader.vertex(f, 1),
                               shader.vertex(f, 2) };
-            rasterize(clip, shader, framebuffer);   // rasterize the primitive
+            rasterize(clip, shader, framebuffer);   // 光栅化 + 片元着色
+        }
+    }
+    framebuffer.write_tga_file("framebuffer.tga");  // 先输出无阴影版本
+
+    // ===== 后处理：逐像素判定是否在阴影中，阴影区变暗 =====
+#pragma omp parallel for
+    for (int x=0; x<width; x++) {
+        for (int y=0; y<height; y++) {
+            // 把相机屏幕空间的片元 (x, y, 深度) 用相机变换的逆 M⁻¹ 送回物体坐标
+            vec4 fragment = (Viewport * Perspective * ModelView).invert() * vec4{static_cast<double>(x), static_cast<double>(y), zbuffer[x+y*width], 1.};
+            // 再用光源变换 N 把它投影到光源的屏幕空间
+            vec4 q = ShadowMatrix * fragment;
+            vec3 p = q.xyz()/q.w;                   // 透视除法：光源视角下的 (x', y', z')
+            if (p.x<0 || p.x>=shadoww || p.y<0 || p.y>=shadowh) continue; // 不在光源视野内，跳过
+            // 若片元深度比阴影贴图记录的"最近深度"更远 → 被别的表面挡住 → 阴影
+            if (p.z < zshadow[int(p.x) + int(p.y)*shadoww] - .03) { // 减 0.03 是深度偏移，避免 z-fighting
+                TGAColor c = framebuffer.get(x, y);
+                framebuffer.set(x, y, { static_cast<unsigned char>(c[0]/2), static_cast<unsigned char>(c[1]/2), static_cast<unsigned char>(c[2]/2), c[3] }); // 变暗一半
+            }
         }
     }
 
-    framebuffer.write_tga_file("framebuffer.tga");
+    framebuffer.write_tga_file("shadow.tga");       // 输出带阴影的最终图
     return 0;
 }
-
