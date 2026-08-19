@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include <string>
 #include <vector>
 #include "geometry.h"   // vec2/vec3/vec4、mat<4,4> 等数学类型

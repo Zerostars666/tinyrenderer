@@ -1,4 +1,4 @@
-#include <fstream>
+﻿#include <fstream>
 #include <sstream>
 #include "model.h"
 
@@ -49,7 +49,7 @@ Model::Model(const std::string filename) {
         std::cerr << "texture file " << texfile << " loading " << (img.read_tga_file(texfile.c_str()) ? "ok" : "failed") << std::endl;
     };
     load_texture("_diffuse.tga", diffusemap);  // 加载漫反射颜色贴图
-    load_texture("_nm.tga",      normalmap);   // 加载法线贴图
+    load_texture("_nm_tangent.tga", normalmap); // 加载切空间法线贴图（法线相对局部TBN坐标系定义）
     load_texture("_spec.tga",    specularmap); // 加载高光权重贴图
 }
 
@@ -76,7 +76,8 @@ vec4 Model::normal(const vec2 &uv) const {
     //光照公式 漫反射 = n·l、高光 = r·v 都依赖法线 n。法线方向稍微偏一点，亮暗就会变化。
     //轮廓、剪影不会变（几何没动），只有表面明暗变了。这是视错觉。
     //注意这里索引顺序是从2 - 0，而不是 0 - 2， 因为法线贴图给的就是反的
-    return vec4{(double)c[2],(double)c[1],(double)c[0],0}*2./255. - vec4{1,1,1,0};
+    //切空间法线要先归一化：后续TBN变换要求法线是单位向量
+    return normalized(vec4{(double)c[2],(double)c[1],(double)c[0],0}*2./255. - vec4{1,1,1,0});
 }
 
 vec2 Model::uv(const int iface, const int nthvert) const {

@@ -1,4 +1,4 @@
-#include <algorithm>
+﻿#include <algorithm>
 #include "our_gl.h"
 #include "model.h"
 
@@ -8,7 +8,9 @@ extern std::vector<double> zbuffer;     // the depth buffer
 struct PhongShader : IShader {
     const Model &model;
     vec4 l;              // light direction in eye coordinates 在摄像机坐标系下的光线方向
-    vec2 varying_uv[3];  // triangle uv coordinates, written by the vertex shader, read by the fragment shader UV坐标
+    vec2  varying_uv[3]; // triangle uv coordinates, written by the vertex shader, read by the fragment shader UV坐标
+    vec4 varying_nrm[3]; // 每顶点的法线（眼空间），片元着色器里用重心坐标插值成每个像素的法线
+    vec4 tri[3];         // 三角形在眼空间（视图坐标系）的三个顶点位置，供片元阶段计算切空间基
 
     PhongShader(const vec3 light, const Model &m) : model(m) {
         l = normalized((ModelView*vec4{light.x, light.y, light.z, 0.})); // transform the light vector to view coordinates
@@ -16,16 +18,25 @@ struct PhongShader : IShader {
     
     //顶点着色器
     virtual vec4 vertex(const int face, const int vert) {
-        varying_uv[vert] = model.uv(face, vert); //获取每个顶点的UV坐标
+        varying_uv[vert]  = model.uv(face, vert); //获取每个顶点的UV坐标
+        varying_nrm[vert] = ModelView.invert_transpose() * model.normal(face, vert); //每顶点的法线变换到眼空间（法线用逆转置变换）
         vec4 gl_Position = ModelView * model.vert(face, vert); //返回视角转换后的顶点位置
+        tri[vert] = gl_Position; //保存眼空间顶点位置，供片元着色器计算切空间
         return Perspective * gl_Position;                         // in clip coordinates
     }
     
     //片元着色器,每一个点会传入一个重心坐标进来
     virtual std::pair<bool,TGAColor> fragment(const vec3 bar) const {
+        mat<2,4> E = { tri[1]-tri[0], tri[2]-tri[0] }; // 三角形在眼空间的两条边（3D）
+        mat<2,2> U = { varying_uv[1]-varying_uv[0], varying_uv[2]-varying_uv[0] }; // 对应的两条UV边（2D）
+        mat<2,4> T = U.invert() * E; // (t,b) = E·U^(-1)：解出切线t和副切线b
+        mat<4,4> D = {normalized(T[0]),  // 切线 t（对应UV的u方向）
+                      normalized(T[1]),  // 副切线 b（对应UV的v方向）
+                      normalized(varying_nrm[0]*bar[0] + varying_nrm[1]*bar[1] + varying_nrm[2]*bar[2]), // 用重心坐标插值出法线n
+                      {0,0,0,1}}; // 组装成Darboux局部坐标系
         vec2 uv = varying_uv[0] * bar[0] + varying_uv[1] * bar[1] + varying_uv[2] * bar[2];
-        vec4 n = normalized(ModelView.invert_transpose() * model.normal(uv)); // 法线：从法线贴图采样后变换到眼空间
-        vec4 r = normalized(n * (n * l)*2 - l);                   // 反射光方向
+        vec4 n = normalized(D.transpose() * model.normal(uv)); // 法线：从切空间法线贴图采样，用TBN转回眼空间
+        vec4 r = normalized(n * (n * l)*2 - l);                   // 反射光方向      
         double ambient  = .4;                                     // 环境光强度
         double diffuse  = 1.*std::max(0., n * l);                 // 漫反射强度
         double specular = (3.*sample2D(model.specular(), uv)[0]/255.) * std::pow(std::max(r.z, 0.), 35); // 高光强度 × 高光贴图权重
